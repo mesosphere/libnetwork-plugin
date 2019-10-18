@@ -197,19 +197,15 @@ sub-push-%:
 ## push one arch
 push: imagetag
 	docker push $(CONTAINER_NAME):$(IMAGETAG)-$(ARCH)
-	docker push quay.io/$(CONTAINER_NAME):$(IMAGETAG)-$(ARCH)
 ifeq ($(ARCH),amd64)
 	docker push $(CONTAINER_NAME):$(IMAGETAG)
-	docker push quay.io/$(CONTAINER_NAME):$(IMAGETAG)
 endif
 
 ## tag images of one arch
 tag-images: imagetag
 	docker tag $(CONTAINER_NAME):latest-$(ARCH) $(CONTAINER_NAME):$(IMAGETAG)-$(ARCH)
-	docker tag $(CONTAINER_NAME):latest-$(ARCH) quay.io/$(CONTAINER_NAME):$(IMAGETAG)-$(ARCH)
 ifeq ($(ARCH),amd64)
 	docker tag $(CONTAINER_NAME):latest-$(ARCH) $(CONTAINER_NAME):$(IMAGETAG)
-	docker tag $(CONTAINER_NAME):latest-$(ARCH) quay.io/$(CONTAINER_NAME):$(IMAGETAG)
 endif
 
 ## tag images of all archs
