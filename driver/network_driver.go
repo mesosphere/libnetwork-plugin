@@ -26,7 +26,6 @@ import (
 	logutils "github.com/projectcalico/libnetwork-plugin/utils/log"
 	mathutils "github.com/projectcalico/libnetwork-plugin/utils/math"
 	"github.com/projectcalico/libnetwork-plugin/utils/netns"
-	osutils "github.com/projectcalico/libnetwork-plugin/utils/os"
 	netlink "github.com/vishvananda/netlink"
 )
 
@@ -250,12 +249,6 @@ func (d NetworkDriver) CreateEndpoint(request *network.CreateEndpointRequest) (*
 	logutils.JSONMessage("CreateEndpoint", request)
 
 	ctx := context.Background()
-	hostname, err := osutils.GetHostname()
-	if err != nil {
-		err = errors.Wrap(err, "Hostname fetching error")
-		log.Errorln(err)
-		return nil, err
-	}
 
 	log.Debugf("Creating endpoint %v\n", request.EndpointID)
 	if request.Interface.Address == "" && request.Interface.AddressIPv6 == "" {
@@ -291,7 +284,7 @@ func (d NetworkDriver) CreateEndpoint(request *network.CreateEndpointRequest) (*
 		addresses = append(addresses, caliconet.IPNet{IPNet: *ipnet})
 	}
 
-	wepName, err := d.generateEndpointName(hostname, request.EndpointID)
+	wepName, err := d.generateEndpointName(Hostname, request.EndpointID)
 	if err != nil {
 		log.Errorln(err)
 		return nil, err
@@ -301,7 +294,7 @@ func (d NetworkDriver) CreateEndpoint(request *network.CreateEndpointRequest) (*
 	endpoint.Name = wepName
 	endpoint.ObjectMeta.Namespace = d.orchestratorID
 	endpoint.Spec.Endpoint = request.EndpointID
-	endpoint.Spec.Node = hostname
+	endpoint.Spec.Node = Hostname
 	endpoint.Spec.Orchestrator = d.orchestratorID
 	endpoint.Spec.Workload = d.containerName
 	endpoint.Spec.InterfaceName = "cali" + request.EndpointID[:mathutils.MinInt(11, len(request.EndpointID))]
@@ -394,14 +387,7 @@ func (d NetworkDriver) DeleteEndpoint(request *network.DeleteEndpointRequest) er
 	logutils.JSONMessage("DeleteEndpoint", request)
 	log.Debugf("Removing endpoint %v\n", request.EndpointID)
 
-	hostname, err := osutils.GetHostname()
-	if err != nil {
-		err = errors.Wrap(err, "Hostname fetching error")
-		log.Errorln(err)
-		return err
-	}
-
-	wepName, err := d.generateEndpointName(hostname, request.EndpointID)
+	wepName, err := d.generateEndpointName(Hostname, request.EndpointID)
 	if err != nil {
 		log.Errorln(err)
 		return err
@@ -448,13 +434,8 @@ func (d NetworkDriver) Join(request *network.JoinRequest) (*network.JoinResponse
 	}
 
 	// 2) update workloads
-	hostname, err := os.Hostname()
-	if err != nil {
-		log.Errorln(err)
-		return nil, err
-	}
 	weps := d.client.WorkloadEndpoints()
-	wepName, err := d.generateEndpointName(hostname, request.EndpointID)
+	wepName, err := d.generateEndpointName(Hostname, request.EndpointID)
 	if err != nil {
 		log.Errorln(err)
 		return nil, err
