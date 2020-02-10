@@ -36,12 +36,14 @@ const (
 	CREATE_PROFILES_ENVKEY    = "CALICO_LIBNETWORK_CREATE_PROFILES"
 	LABEL_ENDPOINTS_ENVKEY    = "CALICO_LIBNETWORK_LABEL_ENDPOINTS"
 	VETH_MTU_ENVKEY           = "CALICO_LIBNETWORK_VETH_MTU"
+	NAMESPACE_ENVKEY          = "CALICO_LIBNETWORK_NAMESPACE"
 )
 
 type NetworkDriver struct {
 	client         clientv3.Interface
 	containerName  string
 	orchestratorID string
+	namespace      string
 
 	ifPrefix string
 
@@ -64,6 +66,7 @@ func NewNetworkDriver(client clientv3.Interface) network.Driver {
 		// hostname and endpoint ID.
 		containerName:  "libnetwork",
 		orchestratorID: "libnetwork",
+		namespace:      "libnetwork",
 
 		ifPrefix:         IFPrefix,
 		DummyIPV4Nexthop: "169.254.1.1",
@@ -87,6 +90,13 @@ func NewNetworkDriver(client clientv3.Interface) network.Driver {
 		driver.vethMTU = uint16(mtu)
 
 		log.WithField("mtu", mtu).Info("Parsed veth MTU")
+	}
+
+	// Configure namespace
+	if value, ok := os.LookupEnv(NAMESPACE_ENVKEY); ok {
+		driver.namespace = value
+
+		log.WithField("namespace", value).Info("WorkloadEndpoint namespace changed")
 	}
 
 	if !driver.createProfiles {
@@ -299,7 +309,7 @@ func (d NetworkDriver) CreateEndpoint(request *network.CreateEndpointRequest) (*
 
 	endpoint := api.NewWorkloadEndpoint()
 	endpoint.Name = wepName
-	endpoint.ObjectMeta.Namespace = d.orchestratorID
+	endpoint.ObjectMeta.Namespace = d.namespace
 	endpoint.Spec.Endpoint = request.EndpointID
 	endpoint.Spec.Node = hostname
 	endpoint.Spec.Orchestrator = d.orchestratorID
