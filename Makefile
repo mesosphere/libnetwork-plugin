@@ -30,6 +30,8 @@ ifeq ($(ARCH),x86_64)
 	override ARCH=amd64
 endif
 
+#
+
 GO_BUILD_VER ?= v0.35-deb-cgo
 # for building, we use the go-build image for the *host* architecture, even if the target is different
 # the one for the host should contain all the necessary cross-compilation tools.
@@ -65,6 +67,11 @@ PLUGIN_LOCATION?=$(CURDIR)/dist/libnetwork-plugin-$(ARCH)
 
 # To run with non-native docker (e.g. on Windows or OSX) you might need to overide this variable
 LOCAL_USER_ID?=$(shell id -u $$USER)
+ifeq ($(LOCAL_USER_ID),0)
+	LOCAL_USER_ENV="RUN_AS_ROOT=true"
+else
+	LOCAL_USER_ENV="LOCAL_USER_ID=$(LOCAL_USER_ID)"
+endif
 
 help:
 	@echo "Makefile for libnetwork-plugin."
@@ -119,7 +126,7 @@ dist/libnetwork-plugin-$(ARCH):
 		-v $(CURDIR)/dist:/go/src/github.com/projectcalico/libnetwork-plugin/dist \
 		-v $(CURDIR)/.go-build-cache:/home/user/.cache:rw \
 		-v $(CURDIR)/.go-pkg-cache:/go/pkg/:rw \
-		-e LOCAL_USER_ID=$(LOCAL_USER_ID) \
+		-e $(LOCAL_USER_ENV) \
 		-e ARCH=$(ARCH) \
 		$(GO_BUILD_CONTAINER) sh -c '\
 			cd /go/src/github.com/projectcalico/libnetwork-plugin && \
@@ -207,7 +214,7 @@ sub-tag-images-%:
 .PHONY: static-checks
 static-checks:
 	docker run --rm \
-		-e LOCAL_USER_ID=$(LOCAL_USER_ID) \
+		-e $(LOCAL_USER_ENV) \
 		-v $(CURDIR):/go/src/github.com/projectcalico/libnetwork-plugin \
 		$(GO_BUILD_CONTAINER) sh -c '\
 			cd  /go/src/github.com/projectcalico/libnetwork-plugin && \
