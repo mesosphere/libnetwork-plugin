@@ -199,7 +199,7 @@ func (i IpamDriver) RequestAddress(request *ipam.RequestAddressRequest) (*ipam.R
 		// Auto assign an IP address.
 		// IPv4/v6 pool will be nil if the docker network doesn't have a subnet associated with.
 		// Otherwise, it will be set to the Calico pool to assign from.
-		IPsV4, IPsV6, err := i.client.IPAM().AutoAssign(
+		IPsV4Net, IPsV6Net, err := i.client.IPAM().AutoAssign(
 			context.Background(),
 			calicoipam.AutoAssignArgs{
 				Num4:      numIPv4,
@@ -215,7 +215,16 @@ func (i IpamDriver) RequestAddress(request *ipam.RequestAddressRequest) (*ipam.R
 			log.Errorln(err)
 			return nil, err
 		}
-		IPs = append(IPsV4, IPsV6...)
+
+		// Convert IPNet addresses to IP addresses
+		for _, ip := range IPsV4Net {
+			IPs = append(IPs, caliconet.IP{ip.IP})
+		}
+		for _, ip := range IPsV6Net {
+			IPs = append(IPs, caliconet.IP{ip.IP})
+		}
+
+		// IPs = append(IPsV4Net.IP, IPsV6Net.IP...)
 	} else {
 		// Docker allows the users to specify any address.
 		// We'll return an error if the address isn't in a Calico pool, but we don't care which pool it's in

@@ -30,7 +30,7 @@ ifeq ($(ARCH),x86_64)
 	override ARCH=amd64
 endif
 
-GO_BUILD_VER ?= v0.16
+GO_BUILD_VER ?= v0.35-deb-cgo
 # for building, we use the go-build image for the *host* architecture, even if the target is different
 # the one for the host should contain all the necessary cross-compilation tools.
 # cross-compilation is only supported on amd64.
@@ -53,7 +53,7 @@ DIND_IMAGE ?= $(BUILDARCH)/docker:$(DIND_IMAGE_VERSION)
 # considerably.
 .SUFFIXES:
 
-SRC_FILES=$(shell find . -type f -name '*.go')
+SRC_FILES=$(shell find . -type f -name '*.go' -not -path '*/\.*')
 
 # These variables can be overridden by setting an environment variable.
 LOCAL_IP_ENV?=$(shell ip route get 8.8.8.8 | head -1 |  awk '{print $$7}')
@@ -68,7 +68,7 @@ LOCAL_USER_ID?=$(shell id -u $$USER)
 
 help:
 	@echo "Makefile for libnetwork-plugin."
-	@echo 
+	@echo
 	@echo "For any target, set ARCH=<target> to build for a given target."
 	@echo "For example, to build for arm64:"
 	@echo
@@ -99,21 +99,6 @@ help:
 default: all
 all: image test-containerized
 
-# Use this to populate the vendor directory after checking out the repository.
-# To update upstream dependencies, delete the glide.lock file first.
-vendor: glide.yaml
-	# Ensure that the glide cache directory exists.
-	mkdir -p $(HOME)/.glide
-
-	# To build without Docker just run "glide install -strip-vendor"
-	docker run --rm \
-		-v $(CURDIR):/go/src/github.com/projectcalico/libnetwork-plugin:rw \
-		-v $(HOME)/.glide:/home/user/.glide:rw \
-		-e LOCAL_USER_ID=$(LOCAL_USER_ID) \
-		$(GO_BUILD_CONTAINER) /bin/sh -c ' \
-			cd /go/src/github.com/projectcalico/libnetwork-plugin && \
-			glide install -strip-vendor' 
-
 install:
 	CGO_ENABLED=0 go install github.com/projectcalico/libnetwork-plugin
 
@@ -126,12 +111,13 @@ sub-build-%:
 	$(MAKE) build ARCH=$*
 
 # Run the build in a container. Useful for CI
-dist/libnetwork-plugin-$(ARCH): vendor
+dist/libnetwork-plugin-$(ARCH):
 	-mkdir -p dist
-	-mkdir -p .go-pkg-cache
+	-mkdir -p .go-pkg-cache .go-build-cache
 	docker run --rm \
 		-v $(CURDIR):/go/src/github.com/projectcalico/libnetwork-plugin:ro \
 		-v $(CURDIR)/dist:/go/src/github.com/projectcalico/libnetwork-plugin/dist \
+		-v $(CURDIR)/.go-build-cache:/home/user/.cache:rw \
 		-v $(CURDIR)/.go-pkg-cache:/go/pkg/:rw \
 		-e LOCAL_USER_ID=$(LOCAL_USER_ID) \
 		-e ARCH=$(ARCH) \
@@ -139,7 +125,7 @@ dist/libnetwork-plugin-$(ARCH): vendor
 			cd /go/src/github.com/projectcalico/libnetwork-plugin && \
 			make binary'
 
-binary: $(SRC_FILES) vendor
+binary: $(SRC_FILES)
 	CGO_ENABLED=0 GOARCH=$(ARCH) go build -v -i -o dist/libnetwork-plugin-$(ARCH) -ldflags "-X main.VERSION=$(shell git describe --tags --dirty) -s -w" main.go
 
 ###############################################################################
@@ -219,7 +205,7 @@ sub-tag-images-%:
 
 # Perform static checks on the code. The golint checks are allowed to fail, the others must pass.
 .PHONY: static-checks
-static-checks: vendor
+static-checks:
 	docker run --rm \
 		-e LOCAL_USER_ID=$(LOCAL_USER_ID) \
 		-v $(CURDIR):/go/src/github.com/projectcalico/libnetwork-plugin \
