@@ -14,7 +14,6 @@ import (
 	caliconet "github.com/projectcalico/libcalico-go/lib/net"
 	"github.com/projectcalico/libcalico-go/lib/options"
 	logutils "github.com/projectcalico/libnetwork-plugin/utils/log"
-	osutils "github.com/projectcalico/libnetwork-plugin/utils/os"
 )
 
 type IpamDriver struct {
@@ -142,12 +141,6 @@ func (i IpamDriver) ReleasePool(request *ipam.ReleasePoolRequest) error {
 func (i IpamDriver) RequestAddress(request *ipam.RequestAddressRequest) (*ipam.RequestAddressResponse, error) {
 	logutils.JSONMessage("RequestAddress", request)
 
-	hostname, err := osutils.GetHostname()
-	if err != nil {
-		log.Errorln(err)
-		return nil, err
-	}
-
 	// Calico IPAM does not allow you to choose a gateway.
 	if request.Options["RequestAddressType"] == "com.docker.network.gateway" {
 		err := errors.New("Calico IPAM does not support specifying a gateway.")
@@ -211,7 +204,7 @@ func (i IpamDriver) RequestAddress(request *ipam.RequestAddressRequest) (*ipam.R
 			calicoipam.AutoAssignArgs{
 				Num4:      numIPv4,
 				Num6:      numIPv6,
-				Hostname:  hostname,
+				Hostname:  Hostname,
 				IPv4Pools: poolV4,
 				IPv6Pools: poolV6,
 			},
@@ -231,7 +224,7 @@ func (i IpamDriver) RequestAddress(request *ipam.RequestAddressRequest) (*ipam.R
 		ip := net.ParseIP(request.Address)
 		ipArgs := calicoipam.AssignIPArgs{
 			IP:       caliconet.IP{IP: ip},
-			Hostname: hostname,
+			Hostname: Hostname,
 		}
 		err := i.client.IPAM().AssignIP(context.Background(), ipArgs)
 		if err != nil {
