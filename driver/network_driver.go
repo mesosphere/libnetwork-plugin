@@ -204,7 +204,36 @@ func (d NetworkDriver) populatePoolAnnotation(pools []string, networkID string, 
 func (d NetworkDriver) DeleteNetwork(request *network.DeleteNetworkRequest) error {
 	logutils.JSONMessage("DeleteNetwork", request)
 
-	// We should delete the annotations from the IP pools!
+	ctx := context.Background()
+	poolClient := d.client.IPPools()
+
+	pools, err := poolClient.List(ctx, options.ListOptions{})
+	if err != nil {
+		err = errors.Wrapf(err, "Network %v gather error", request.NetworkID)
+		log.Errorln(err)
+		return err
+	}
+
+	for _, ipPool := range pools.Items {
+		if nid, ok := ipPool.Annotations[DOCKER_LABEL_PREFIX+"network.ID"]; ok && nid == request.NetworkID {
+			ann := ipPool.GetAnnotations()
+			cleanAnn := map[string]string{}
+
+			for k, v := range ann {
+				if !strings.HasPrefix(k, DOCKER_LABEL_PREFIX) {
+					cleanAnn[k] = v
+				}
+			}
+
+			ipPool.SetAnnotations(cleanAnn)
+			_, err = poolClient.Update(ctx, &ipPool, options.SetOptions{})
+			if err != nil {
+				log.Errorln(err)
+				return err
+			}
+			break
+		}
+	}
 
 	return nil
 }
