@@ -19,7 +19,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	dockertypes "github.com/docker/docker/api/types"
 	libcalicoErrors "github.com/projectcalico/libcalico-go/lib/errors"
 	wepname "github.com/projectcalico/libcalico-go/lib/names"
 	"github.com/projectcalico/libcalico-go/lib/options"
@@ -580,7 +579,7 @@ RETRY_NETWORK_INSPECT:
 	}
 
 	// inspect our custom network
-	networkData, err := dockerCli.NetworkInspect(ctx, networkID, dockertypes.NetworkInspectOptions{})
+	networkData, err := dockerCli.NetworkInspect(ctx, networkID)
 	if err != nil {
 		err = errors.Wrapf(err, "Error inspecting network %s - retrying (T=%s)", networkID, time.Since(start))
 		log.Warningln(err)
