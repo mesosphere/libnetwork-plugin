@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -130,65 +129,14 @@ func (d NetworkDriver) FreeNetwork(request *network.FreeNetworkRequest) error {
 
 func (d NetworkDriver) CreateNetwork(request *network.CreateNetworkRequest) error {
 	logutils.JSONMessage("CreateNetwork", request)
-	knownOpts := map[string]bool{"com.docker.network.enable_ipv6": true}
-	// Reject all options (--internal, --enable_ipv6, etc)
-	for k, v := range request.Options {
-		skip := false
-		for known, _ := range knownOpts {
-			if k == known {
-				skip = true
-				break
-			}
-		}
-		if skip {
-			continue
-		}
-		optionSet := false
-		flagName := k
-		flagValue := fmt.Sprintf("%s", v)
-		multipleFlags := false
-		switch v := v.(type) {
-		case bool:
-			// if v == true then optionSet = true
-			optionSet = v
-			flagName = "--" + strings.TrimPrefix(k, "com.docker.network.")
-			flagValue = ""
-			break
-		case map[string]interface{}:
-			optionSet = len(v) != 0
-			flagName = ""
-			numFlags := 0
-			// Sort flags for consistent error reporting
-			flags := []string{}
-			for flag := range v {
-				flags = append(flags, flag)
-			}
-			sort.Strings(flags)
+	opts := map[string]interface{}{
+		"com.docker.network.enable_ipv6": true,
+		"org.projectcalico.profile":      "",
+	}
 
-			for _, flag := range flags {
-				flagName = flagName + flag + ", "
-				numFlags++
-			}
-			multipleFlags = numFlags > 1
-			flagName = strings.TrimSuffix(flagName, ", ")
-			flagValue = ""
-			break
-		default:
-			// for unknown case let optionSet = true
-			optionSet = true
-		}
-		if optionSet {
-			if flagValue != "" {
-				flagValue = " (" + flagValue + ")"
-			}
-			f := "flag"
-			if multipleFlags {
-				f = "flags"
-			}
-			err := errors.New("Calico driver does not support the " + f + " " + flagName + flagValue + ".")
-			log.Errorln(err)
-			return err
-		}
+	err := parseDockerOptions(request.Options, &opts)
+	if err != nil {
+		return fmt.Errorf("Could not parse options: %s", err.Error())
 	}
 
 	ps := []string{}
@@ -218,10 +166,10 @@ func (d NetworkDriver) CreateNetwork(request *network.CreateNetworkRequest) erro
 	}
 
 	logutils.JSONMessage("CreateNetwork response", map[string]string{})
-	return d.populatePoolAnnotation(ps, request.NetworkID)
+	return d.populatePoolAnnotation(ps, request.NetworkID, opts["org.projectcalico.profile"].(string))
 }
 
-func (d NetworkDriver) populatePoolAnnotation(pools []string, networkID string) error {
+func (d NetworkDriver) populatePoolAnnotation(pools []string, networkID string, profile string) error {
 	ctx := context.Background()
 	poolClient := d.client.IPPools()
 	ipPools, err := poolClient.List(ctx, options.ListOptions{})
@@ -237,6 +185,10 @@ func (d NetworkDriver) populatePoolAnnotation(pools []string, networkID string) 
 					ann = map[string]string{}
 				}
 				ann[DOCKER_LABEL_PREFIX+"network.ID"] = networkID
+				if profile != "" {
+					ann[DOCKER_LABEL_PREFIX+"profile"] = profile
+				}
+
 				ipPool.SetAnnotations(ann)
 				_, err = poolClient.Update(ctx, &ipPool, options.SetOptions{})
 				if err != nil {
@@ -251,6 +203,9 @@ func (d NetworkDriver) populatePoolAnnotation(pools []string, networkID string) 
 
 func (d NetworkDriver) DeleteNetwork(request *network.DeleteNetworkRequest) error {
 	logutils.JSONMessage("DeleteNetwork", request)
+
+	// We should delete the annotations from the IP pools!
+
 	return nil
 }
 
@@ -328,12 +283,16 @@ func (d NetworkDriver) CreateEndpoint(request *network.CreateEndpointRequest) (*
 	}
 
 	f := false
-	networkName := ""
+	profileName := ""
 	for _, p := range pools.Items {
 		if nid, ok := p.Annotations[DOCKER_LABEL_PREFIX+"network.ID"]; ok && nid == request.NetworkID {
 			f = true
-			networkName = p.ObjectMeta.Name
-			log.Debugf("Find ippool : %v\n", p.Name)
+			profileName = p.ObjectMeta.Name
+			if profile, ok := p.Annotations[DOCKER_LABEL_PREFIX+"profile"]; ok {
+				profileName = profile
+			}
+			log.Debugf("Find ippool   : %v\n", p.Name)
+			log.Debugf("Using profile : %v\n", profileName)
 			break
 		}
 	}
@@ -343,24 +302,24 @@ func (d NetworkDriver) CreateEndpoint(request *network.CreateEndpointRequest) (*
 		return nil, err
 	}
 
-	if d.createProfiles {
-		// Now that we know the network name, set it on the endpoint.
-		endpoint.Spec.Profiles = append(endpoint.Spec.Profiles, networkName)
+	// Now that we know the network name, set it on the endpoint.
+	endpoint.Spec.Profiles = append(endpoint.Spec.Profiles, profileName)
 
-		// Check if exists
-		if _, err := d.client.Profiles().Get(ctx, networkName, options.GetOptions{}); err != nil {
+	// Create if missing
+	if d.createProfiles {
+		if _, err := d.client.Profiles().Get(ctx, profileName, options.GetOptions{}); err != nil {
 			// If a profile for the network name doesn't exist then it needs to be created.
 			// We always attempt to create the profile and rely on the datastore to reject
 			// the request if the profile already exists.
 			profile := &api.Profile{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: networkName,
+					Name: profileName,
 				},
 				Spec: api.ProfileSpec{
 					Egress: []api.Rule{{Action: "Allow"}},
 					Ingress: []api.Rule{{Action: "Allow",
 						Source: api.EntityRule{
-							Selector: fmt.Sprintf("has(%s)", networkName),
+							Selector: fmt.Sprintf("has(%s)", profileName),
 						}}},
 				},
 			}
