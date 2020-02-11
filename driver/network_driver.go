@@ -404,7 +404,7 @@ func (d NetworkDriver) DeleteEndpoint(request *network.DeleteEndpointRequest) er
 
 	if _, err = d.client.WorkloadEndpoints().Delete(
 		context.Background(),
-		d.orchestratorID,
+		d.namespace,
 		wepName,
 		options.DeleteOptions{}); err != nil {
 		err = errors.Wrapf(err, "Endpoint %v removal error", request.EndpointID)
@@ -449,7 +449,7 @@ func (d NetworkDriver) Join(request *network.JoinRequest) (*network.JoinResponse
 		log.Errorln(err)
 		return nil, err
 	}
-	wep, err := weps.Get(ctx, d.orchestratorID, wepName, options.GetOptions{})
+	wep, err := weps.Get(ctx, d.namespace, wepName, options.GetOptions{})
 	if err != nil {
 		log.Errorln(err)
 		return nil, err
