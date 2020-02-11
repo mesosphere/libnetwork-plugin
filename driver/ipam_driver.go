@@ -224,7 +224,6 @@ func (i IpamDriver) RequestAddress(request *ipam.RequestAddressRequest) (*ipam.R
 			IPs = append(IPs, caliconet.IP{ip.IP})
 		}
 
-		// IPs = append(IPsV4Net.IP, IPsV6Net.IP...)
 	} else {
 		// Docker allows the users to specify any address.
 		// We'll return an error if the address isn't in a Calico pool, but we don't care which pool it's in
