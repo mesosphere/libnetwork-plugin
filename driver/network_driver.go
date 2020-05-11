@@ -473,9 +473,46 @@ func (d NetworkDriver) Join(request *network.JoinRequest) (*network.JoinResponse
 		NextHop:     "",
 	})
 
+	// NOTE(jkoelker) Check if we should attempt ipv6 config
+	ipv6Enabled := true
+
+	os.Setenv("DOCKER_API_VERSION", "1.25")
+	dockerCli, err := dockerClient.NewEnvClient()
+
+	if err != nil {
+		err = errors.Wrap(
+			err,
+			"Error while attempting to instantiate docker client from env. "+
+				"Disabling IPv6.",
+		)
+		log.Warningln(err)
+		ipv6Enabled = false
+	} else {
+
+		defer dockerCli.Close()
+
+		networkData, err := dockerCli.NetworkInspect(ctx, request.NetworkID)
+		if err != nil {
+			err = errors.Wrapf(
+				err,
+				"Error inspecting network %s to determine IPv6, forcing disabled",
+				request.NetworkID,
+			)
+			log.Warningln(err)
+			ipv6Enabled = false
+
+		} else {
+			ipv6Enabled = networkData.EnableIPv6
+		}
+	}
+
 	linkLocalAddr := netns.GetLinkLocalAddr(hostInterfaceName)
 	if linkLocalAddr == nil {
 		log.Warnf("No IPv6 link local address for %s", hostInterfaceName)
+
+	} else if !ipv6Enabled {
+		log.Warnf("IPv6 disabled for network %s", request.NetworkID)
+
 	} else {
 		resp.GatewayIPv6 = fmt.Sprintf("%s", linkLocalAddr)
 		nextHopIPv6 := fmt.Sprintf("%s/128", linkLocalAddr)
